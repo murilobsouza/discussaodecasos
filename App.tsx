@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CLINICAL_CASES } from './constants/cases';
-import { ClinicalCase, AppState, Message, StageFeedback } from './types';
+import { ClinicalCase, AppState, Message } from './types';
 import { getFeedback } from './services/geminiService';
 
 // --- Components ---
@@ -23,9 +23,9 @@ const Navbar = () => (
 
 const Footer = () => (
   <footer className="bg-gray-100 border-t p-6 mt-12 text-center text-gray-600">
-    <p className="mb-2">© {new Date().getFullYear()} OftalmoEdu - Plataforma Educacional de Medicina</p>
+    <p className="mb-2">© {new Date().getFullYear()} OftalmoEdu - Portal Educacional</p>
     <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg inline-block text-sm max-w-2xl">
-      <strong>Aviso:</strong> Uso exclusivamente educacional para acadêmicos de medicina. Não substitui supervisão médica ou protocolos hospitalares oficiais.
+      <strong>Aviso:</strong> Uso exclusivamente educacional para acadêmicos de medicina.
     </div>
   </footer>
 );
@@ -39,6 +39,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
   const [totalScore, setTotalScore] = useState(0);
   const [stageScores, setStageScores] = useState<number[]>([]);
 
@@ -49,6 +50,7 @@ export default function App() {
     setTotalScore(0);
     setStageScores(new Array(c.stages.length).fill(0));
     setAppState(AppState.CASE_DISCUSSION);
+    setIsAutoAdvancing(false);
   };
 
   const startRandomCase = () => {
@@ -58,7 +60,7 @@ export default function App() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading || !currentCase) return;
+    if (!inputValue.trim() || isLoading || isAutoAdvancing || !currentCase) return;
 
     const userMsg: Message = { role: 'user', content: inputValue };
     const newMessages = [...messages, userMsg];
@@ -80,15 +82,20 @@ export default function App() {
     }
 
     setIsLoading(false);
-  };
 
-  const nextStage = () => {
-    if (!currentCase) return;
-    if (currentStageIndex < currentCase.stages.length - 1) {
-      setCurrentStageIndex(prev => prev + 1);
-      setMessages([]); 
-    } else {
-      setAppState(AppState.RESULTS);
+    // Automatic Progression Logic
+    if (feedback.isReadyForNext) {
+      setIsAutoAdvancing(true);
+      setTimeout(() => {
+        if (currentStageIndex < currentCase.stages.length - 1) {
+          setCurrentStageIndex(prev => prev + 1);
+          setMessages([]);
+          setIsAutoAdvancing(false);
+        } else {
+          setAppState(AppState.RESULTS);
+          setIsAutoAdvancing(false);
+        }
+      }, 4500); // 4.5 seconds delay to allow reading the feedback
     }
   };
 
@@ -97,7 +104,7 @@ export default function App() {
       <div className="text-center mb-12">
         <h2 className="text-4xl font-extrabold text-blue-900 mb-4">Discussão de Casos Clínicos – Oftalmologia</h2>
         <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-          Analise casos clínicos cegos e discuta com nosso tutor de IA. Os diagnósticos só serão revelados ao final.
+          O tutor de IA guiará a evolução do caso automaticamente conforme seu desempenho.
         </p>
         <button 
           onClick={startRandomCase}
@@ -129,7 +136,6 @@ export default function App() {
 
   const renderDiscussion = () => {
     if (!currentCase) return null;
-    const stage = currentCase.stages[currentStageIndex];
     const progress = ((currentStageIndex + 1) / currentCase.stages.length) * 100;
 
     return (
@@ -145,7 +151,7 @@ export default function App() {
               <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
             </div>
             
-            <div className="space-y-6 overflow-y-auto max-h-[500px] pr-2">
+            <div className="space-y-6 overflow-y-auto max-h-[550px] pr-2">
               {currentCase.stages.slice(0, currentStageIndex + 1).map((s, idx) => (
                 <div key={s.id} className={`p-4 rounded-lg border-l-4 ${idx === currentStageIndex ? 'bg-blue-50 border-blue-500' : 'bg-gray-50 border-gray-300 opacity-60'}`}>
                   <h4 className="font-bold text-sm text-blue-800 mb-1">{s.name}</h4>
@@ -160,12 +166,11 @@ export default function App() {
               <span className="text-indigo-200 text-[10px] uppercase font-bold tracking-widest block">Pontuação Acumulada</span>
               <span className="text-2xl font-black">{totalScore} <span className="text-sm opacity-50">/ {currentCase.stages.length * 3}</span></span>
             </div>
-            <button 
-              onClick={nextStage}
-              className="px-6 py-2 bg-white text-blue-900 font-bold rounded-lg hover:bg-blue-50 transition-colors text-sm"
-            >
-              {currentStageIndex < currentCase.stages.length - 1 ? 'Próxima Etapa' : 'Ver Diagnóstico'}
-            </button>
+            {isAutoAdvancing && (
+              <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg border border-white/20 animate-pulse">
+                <span className="text-xs font-bold uppercase">Progredindo...</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -177,7 +182,7 @@ export default function App() {
               <div>
                 <h4 className="font-bold text-gray-800 text-sm">Tutor Especialista</h4>
                 <p className="text-[10px] text-green-600 flex items-center gap-1 font-bold">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> DISPONÍVEL
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> ONLINE
                 </p>
               </div>
             </div>
@@ -187,7 +192,7 @@ export default function App() {
             {messages.length === 0 && (
               <div className="text-center py-10 px-4">
                 <div className="bg-white border p-6 rounded-2xl text-sm italic text-gray-500 shadow-sm max-w-sm mx-auto">
-                  "Como você interpretaria os dados desta etapa e quais seriam suas próximas perguntas ou exames?"
+                  "Analise os dados clínicos ao lado e apresente suas hipóteses ou conduta para esta etapa."
                 </div>
               </div>
             )}
@@ -202,6 +207,13 @@ export default function App() {
                 </div>
               </div>
             ))}
+            {isAutoAdvancing && (
+              <div className="flex justify-start">
+                <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl text-[10px] font-bold text-blue-600 uppercase tracking-widest flex gap-2 items-center">
+                  Objetivo atingido. Avançando etapa clínica em instantes...
+                </div>
+              </div>
+            )}
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-white border p-3 rounded-2xl text-xs italic text-gray-400 flex gap-2 items-center">
@@ -210,7 +222,7 @@ export default function App() {
                     <div className="w-1 h-1 bg-gray-300 rounded-full animate-bounce delay-75"></div>
                     <div className="w-1 h-1 bg-gray-300 rounded-full animate-bounce delay-150"></div>
                   </div>
-                  Processando raciocínio clínico...
+                  Processando raciocínio...
                 </div>
               </div>
             )}
@@ -222,13 +234,13 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Escreva sua análise técnica..."
-                disabled={isLoading}
+                placeholder={isAutoAdvancing ? "Aguarde o avanço da etapa..." : "Escreva sua análise técnica..."}
+                disabled={isLoading || isAutoAdvancing}
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 transition-all shadow-sm"
               />
               <button 
                 type="submit"
-                disabled={isLoading || !inputValue.trim()}
+                disabled={isLoading || isAutoAdvancing || !inputValue.trim()}
                 className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-300 transition-colors shadow-lg"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -251,9 +263,9 @@ export default function App() {
       <div className="max-w-4xl mx-auto px-4 py-12">
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
           <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-10 text-center text-white">
-            <h2 className="text-2xl font-bold mb-4">Caso Concluído</h2>
+            <h2 className="text-2xl font-bold mb-4">Discussão Concluída</h2>
             <div className="inline-block bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-              <span className="block text-[10px] uppercase tracking-widest opacity-70 mb-1">Seu Score Final</span>
+              <span className="block text-[10px] uppercase tracking-widest opacity-70 mb-1">Score Final</span>
               <span className="text-5xl font-black">{finalScore}<span className="text-xl opacity-50">/10</span></span>
             </div>
           </div>
@@ -269,7 +281,7 @@ export default function App() {
 
             <div className="grid md:grid-cols-2 gap-8 mb-12">
               <div>
-                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Métricas de Discussão</h3>
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Desempenho por Etapa</h3>
                 <div className="space-y-3">
                   {currentCase.stages.map((s, idx) => (
                     <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
@@ -285,12 +297,10 @@ export default function App() {
               </div>
 
               <div className="bg-gray-50 p-6 rounded-2xl border border-dashed border-gray-300">
-                <h3 className="text-xs font-bold text-gray-800 mb-3 uppercase tracking-wider">Objetivos Pedagógicos</h3>
-                <ul className="text-xs text-gray-600 space-y-2 list-disc pl-4">
-                  <li>Identificação de sintomas precursores de gravidade.</li>
-                  <li>Diferenciação entre patologias de sintomas semelhantes.</li>
-                  <li>Proposta de conduta terapêutica baseada em evidências.</li>
-                </ul>
+                <h3 className="text-xs font-bold text-gray-800 mb-3 uppercase tracking-wider">Apreciação do Tutor</h3>
+                <p className="text-xs text-gray-600 italic">
+                  Você concluiu todas as fases da investigação. Revise os pontos clínicos onde sua nota foi menor para fortalecer seu diagnóstico diferencial.
+                </p>
               </div>
             </div>
 
@@ -305,7 +315,7 @@ export default function App() {
                 onClick={startRandomCase}
                 className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-colors shadow-lg text-sm"
               >
-                Tentar Outro Caso
+                Novo Caso Aleatório
               </button>
             </div>
           </div>
